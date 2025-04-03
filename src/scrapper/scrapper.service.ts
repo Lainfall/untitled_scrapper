@@ -1,20 +1,75 @@
-import puppeteer, { Browser, ElementHandle, Page } from "puppeteer";
+import { Browser, ElementHandle, Page } from "puppeteer";
 import { APP_CONFIG } from "../config/app.config.ts";
 import { LoggerService } from "../core/logging/logger.service.ts";
 import { GameInfo } from "./data/game.interface.ts";
 import { IScrapperService } from "./scrapper.interface.ts";
+import { DatabaseService } from "../core/database/database.service.ts";
 
 export class ScrapperService implements IScrapperService {
   private logger: LoggerService;
-  private information: GameInfo[] = [];
-  private favoriteGames: { id: number; name: string; chance: number }[] = [
-    { id: 103, name: "Fortune Rabbit", chance: 0 },
-    { id: 17, name: "Fortune Tiger", chance: 0 },
-    { id: 7, name: "Fortune Ox", chance: 0 },
-  ];
+  private database: DatabaseService;
+  private gameInfo: GameInfo[] = [];
+  // ! Move this for somewhere else, like the future frontend
+  // private favoriteGames: { id: number; name: string; chance: number }[] = [
+  //   { id: 103, name: "Fortune Rabbit", chance: 0 },
+  //   { id: 17, name: "Fortune Tiger", chance: 0 },
+  //   { id: 7, name: "Fortune Ox", chance: 0 },
+  // ];
 
-  constructor(logger: LoggerService) {
+  constructor(logger: LoggerService, database: DatabaseService) {
     this.logger = logger;
+    this.database = database;
+  }
+
+  saveGameInfoToDatabase(gameInfos: GameInfo[]): void {
+    this.logger.log("💾 Saving scraped game information to the database...");
+    const db = this.database.getDb();
+
+    try {
+      // ! Move this to be populated while setting up the database
+      const insertAppStmt = db.prepare(
+        "INSERT OR IGNORE INTO apps (game_id, name) VALUES (?, ?)",
+      );
+      const selectAppIdStmt = db.prepare(
+        "SELECT id FROM apps WHERE game_id = ?",
+      );
+      const insertAppDataStmt = db.prepare(
+        "INSERT INTO app_data (chance, date, game_id) VALUES (?, ?, ?)",
+      );
+
+      for (const gameInfo of gameInfos) {
+        try {
+          insertAppStmt.run(gameInfo.id, gameInfo.name);
+
+          const appIdResult = selectAppIdStmt.value<[number]>(gameInfo.id);
+          const internalAppId = appIdResult?.[0];
+
+          if (internalAppId) {
+            insertAppDataStmt.run(gameInfo.chance, Date.now(), internalAppId);
+          } else {
+            this.logger.warn(
+              `Could not retrieve internal app ID for game ID: ${gameInfo.id}`,
+            );
+          }
+        } catch (error) {
+          this.logger.error(
+            `Error saving data for game ${gameInfo.name} (ID: ${gameInfo.id}):`,
+            error,
+          );
+        }
+      }
+
+      insertAppStmt.finalize();
+      selectAppIdStmt.finalize();
+      insertAppDataStmt.finalize();
+
+      this.logger.log("✅ Scraped game information saved to the database.");
+    } catch (error) {
+      this.logger.error(
+        "Error preparing or executing database statements:",
+        error,
+      );
+    }
   }
 
   async getInformation(browser: Browser): Promise<GameInfo[]> {
@@ -23,9 +78,12 @@ export class ScrapperService implements IScrapperService {
       await this.goToSite(page, APP_CONFIG.DEFAULT_URL!);
       await this.selectTab(page);
       const cards = await this.getAllCards(page);
-      this.information = await this.getAllCardsInfo(cards);
-      this.logger.log(`📊 Successfully scraped ${this.information.length} game entries.`);
-      return this.information;
+      this.gameInfo = await this.getAllCardsInfo(cards);
+      this.logger.log(
+        `📊 Successfully scraped ${this.gameInfo.length} game entries.`,
+      );
+      this.saveGameInfoToDatabase(this.gameInfo);
+      return this.gameInfo;
     } catch (error) {
       this.logger.error("Error during scraping:", error);
       return [];

@@ -10,6 +10,7 @@ const dbTables = [
   CREATE TABLE IF NOT EXISTS
   apps (
   id    INTEGER PRIMARY KEY,
+  game_id INTEGER,
   name TEXT
   );`,
   `
@@ -18,8 +19,8 @@ const dbTables = [
   id      INTEGER PRIMARY KEY,
   chance  NUMBER  NOT NULL,
   date    NUMBER  NOT NULL,
-  app_id  INTEGER NOT NULL,
-  FOREIGN KEY(app_id) REFERENCES apps(id)
+  game_id INTEGER NOT NULL,
+  FOREIGN KEY(game_id) REFERENCES apps(id)
   );`,
 ];
 
@@ -36,9 +37,14 @@ async function setupDatabase() {
       "SELECT name FROM sqlite_master WHERE type='table'",
     ).values<string[]>();
 
+    const tableListFormatted = createdTables.flat().reduce(
+      (last, str, idx, arr) =>
+        `${last} ${str.trim()}${idx === arr.length - 1 ? "" : ","}`,
+      "",
+    );
+
     logger.log(
-      "Tables created:\n" +
-        createdTables.flat().reduce((last, str) => last + str + "\n", "\n"),
+      "Tables created: " + tableListFormatted,
     );
 
     db.close();

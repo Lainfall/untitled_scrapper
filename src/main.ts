@@ -1,4 +1,3 @@
-// main.ts
 import { BrowserService } from "./core/browser/browser.service.ts";
 import { CliService } from "./cli/cli.service.ts";
 import { ScrapperService } from "./scrapper/scrapper.service.ts";
@@ -7,13 +6,15 @@ import { LoggerService } from "./core/logging/logger.service.ts";
 import { APP_CONFIG } from "./config/app.config.ts";
 import { isDev } from "./config/app.config.ts";
 import { Browser } from "puppeteer";
+import { DatabaseService } from "./core/database/database.service.ts";
 
 console.log(isDev);
 async function main() {
   const logger = new LoggerService();
   const cliService = new CliService(logger);
   const browserService = new BrowserService(logger);
-  const scrapperService = new ScrapperService(logger);
+  const databaseService = new DatabaseService(logger);
+  const scrapperService = new ScrapperService(logger, databaseService);
   const serverService = new ServerService(scrapperService, logger);
 
   if (cliService.isHelpNeeded()) {
@@ -23,6 +24,7 @@ async function main() {
 
   cliService.writeOptionsMessage();
 
+  await databaseService.initialize();
   let browser: Browser;
 
   if (isDev) {
@@ -35,6 +37,7 @@ async function main() {
   async function scrapeAndServe() {
     logger.log("🔄 Starting data scraping...");
     const data = await scrapperService.getInformation(browser);
+
     serverService.updateData(
       data as {
         id: number;
