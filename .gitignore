@@ -140,3 +140,5 @@ deno.lock
 
 # In file database
 *.sqlite3
+database/db.sqlite3-shm
+database/db.sqlite3-wal
