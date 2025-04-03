@@ -1,4 +1,3 @@
-// util/object.util.ts
 export function convertArrayToObject<T, K extends keyof T>(
   key: K,
   array: Array<T>,
